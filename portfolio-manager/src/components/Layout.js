@@ -13,12 +13,29 @@ import {
   Menu, 
   X,
   LogOut,
-  User
+  User,
+  ChevronDown
 } from 'lucide-react'
+import {
+  NavigationMenu,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  navigationMenuTriggerStyle,
+} from './ui/navigation-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu'
+import { Button } from './ui/button'
 
 const Layout = ({ children }) => {
   const { user, profile, signOut } = useAuth()
-  const { theme, toggleTheme } = useTheme()
+  const { toggleTheme, setLightTheme, setDarkTheme } = useTheme()
   const router = useRouter()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
@@ -34,13 +51,13 @@ const Layout = ({ children }) => {
       current: router.pathname === '/'
     },
     {
-      name: 'Holdings',
-      href: '/holdings',
+      name: 'Positions',
+      href: '/positions',
       icon: TrendingUp,
-      current: router.pathname.startsWith('/holdings')
+      current: router.pathname.startsWith('/positions')
     },
     {
-      name: 'Analysis',
+      name: 'Snapshots',
       href: '/analysis',
       icon: PieChart,
       current: router.pathname.startsWith('/analysis')
@@ -73,69 +90,96 @@ const Layout = ({ children }) => {
               </div>
               
               {/* Desktop Navigation */}
-              <div className="hidden sm:ml-8 sm:flex sm:space-x-8">
-                {navigation.map((item) => {
-                  const Icon = item.icon
-                  return (
-                    <Link
-                      key={item.name}
-                      href={item.href}
-                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors ${
-                        item.current
-                          ? 'border-finance-blue-500 text-finance-blue-600 dark:text-finance-blue-400'
-                          : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground'
-                      }`}
-                    >
-                      <Icon className="w-4 h-4 mr-2" />
-                      {item.name}
-                    </Link>
-                  )
-                })}
+              <div className="hidden sm:ml-8 sm:flex">
+                <NavigationMenu>
+                  <NavigationMenuList>
+                    {navigation.map((item) => {
+                      const Icon = item.icon
+                      return (
+                        <NavigationMenuItem key={item.name}>
+                          <NavigationMenuLink asChild>
+                            <Link 
+                              href={item.href}
+                              className={`${navigationMenuTriggerStyle()} ${
+                                item.current
+                                  ? 'bg-accent text-accent-foreground'
+                                  : ''
+                              }`}
+                            >
+                              <Icon className="w-4 h-4 mr-2" />
+                              {item.name}
+                            </Link>
+                          </NavigationMenuLink>
+                        </NavigationMenuItem>
+                      )
+                    })}
+                  </NavigationMenuList>
+                </NavigationMenu>
               </div>
             </div>
 
             {/* Right side actions */}
             <div className="flex items-center space-x-4">
               {/* Theme Toggle */}
-              <button
-                onClick={toggleTheme}
-                className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                aria-label="Toggle theme"
-              >
-                {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon">
+                    <Sun className="h-[1.2rem] w-[1.2rem] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
+                    <Moon className="absolute h-[1.2rem] w-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
+                    <span className="sr-only">Toggle theme</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={setLightTheme}>
+                    <Sun className="mr-2 h-4 w-4" />
+                    Light
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={setDarkTheme}>
+                    <Moon className="mr-2 h-4 w-4" />
+                    Dark
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={toggleTheme}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Toggle
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               {/* User Menu */}
-              <div className="relative">
-                <div className="flex items-center space-x-3">
-                  <div className="hidden sm:block text-right">
-                    <div className="text-sm font-medium text-foreground">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex items-center space-x-2">
+                    <User className="w-4 h-4" />
+                    <span className="hidden sm:inline-block text-sm">
                       {isDemoMode ? 'Demo User' : (profile?.full_name || profile?.username || user?.email)}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {isDemoMode ? 'demo@portfolio.com' : user?.email}
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={handleSignOut}
-                    className="flex items-center p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                    aria-label="Sign out"
-                  >
-                    <LogOut className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
+                    </span>
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                  <DropdownMenuItem disabled>
+                    <User className="mr-2 h-4 w-4" />
+                    {isDemoMode ? 'demo@portfolio.com' : user?.email}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               {/* Mobile menu button */}
               <div className="sm:hidden">
-                <button
+                <Button
+                  variant="outline"
+                  size="icon"
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                  className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                   aria-label="Open mobile menu"
                 >
                   {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -181,13 +225,14 @@ const Layout = ({ children }) => {
                 </div>
               </div>
               <div className="mt-3 px-4">
-                <button
+                <Button
+                  variant="ghost"
                   onClick={handleSignOut}
-                  className="flex items-center w-full px-3 py-2 text-base font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                  className="w-full justify-start"
                 >
                   <LogOut className="w-5 h-5 mr-3" />
                   Sign out
-                </button>
+                </Button>
               </div>
             </div>
           </div>

@@ -12,6 +12,10 @@
         "browser": {
             "command": "npx",
             "args": ["@agent-infra/mcp-server-browser@latest"]
+        },
+        "context7": {
+            "command": "npx",
+            "args": ["-y", "@upstash/context7-mcp@latest"]
         }
     }
 }
