@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { supabase } from '../utils/supabase'
 
-const AuthContext = createContext({})
+const AuthContext = createContext(null)
 
 export const useAuth = () => {
   const context = useContext(AuthContext)
@@ -15,6 +15,38 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+
+  const fetchProfile = useCallback(async (userId) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+
+      if (error && error.code !== 'PGRST116') {
+        throw error
+      }
+
+      setProfile(data)
+    } catch (error) {
+      console.error('Error fetching profile:', error)
+    }
+  }, [])
+
+  const getInitialSession = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        setUser(session.user)
+        await fetchProfile(session.user.id)
+      }
+    } catch (error) {
+      console.error('Error getting initial session:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [fetchProfile])
 
   useEffect(() => {
     // Development bypass - auto login as lindsayleeds@gmail.com
@@ -54,39 +86,7 @@ export const AuthProvider = ({ children }) => {
     })
 
     return () => subscription.unsubscribe()
-  }, [])
-
-  const getInitialSession = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user) {
-        setUser(session.user)
-        await fetchProfile(session.user.id)
-      }
-    } catch (error) {
-      console.error('Error getting initial session:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const fetchProfile = async (userId) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single()
-
-      if (error && error.code !== 'PGRST116') {
-        throw error
-      }
-
-      setProfile(data)
-    } catch (error) {
-      console.error('Error fetching profile:', error)
-    }
-  }
+  }, [getInitialSession, fetchProfile])
 
   const signIn = async (email, password) => {
     try {

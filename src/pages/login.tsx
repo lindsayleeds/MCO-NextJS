@@ -54,7 +54,7 @@ export default function Login() {
         // Unexpected case - no error but no user/session
         setError('Login failed. Please try again.')
       }
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred')
     } finally {
       setLoading(false)
@@ -88,7 +88,7 @@ export default function Login() {
       } else {
         setResetEmailSent(true)
       }
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred')
     } finally {
       setLoading(false)

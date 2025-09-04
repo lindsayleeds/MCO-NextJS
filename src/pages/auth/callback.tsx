@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/utils/supabase'
@@ -6,7 +6,6 @@ import { supabase } from '@/utils/supabase'
 export default function AuthCallback() {
   const router = useRouter()
   const { user } = useAuth()
-  const [processing, setProcessing] = useState(true)
 
   useEffect(() => {
     const handleAuthCallback = async () => {
@@ -16,7 +15,7 @@ export default function AuthCallback() {
       if (type === 'recovery' && access_token && refresh_token) {
         try {
           // Set the session using the tokens from the URL
-          const { data, error } = await supabase.auth.setSession({
+          const { error } = await supabase.auth.setSession({
             access_token: access_token as string,
             refresh_token: refresh_token as string,
           })
@@ -45,7 +44,6 @@ export default function AuthCallback() {
         // No valid session, redirect to login
         router.push('/login')
       }
-      setProcessing(false)
     }
 
     if (router.isReady) {
