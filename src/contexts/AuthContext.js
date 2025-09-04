@@ -17,6 +17,27 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // Development bypass - auto login as lindsayleeds@gmail.com
+    if (process.env.NODE_ENV === 'development') {
+      const devUser = {
+        id: 'dev-user-id',
+        email: 'lindsayleeds@gmail.com',
+        user_metadata: {
+          full_name: 'Lindsay Leeds'
+        }
+      }
+      const devProfile = {
+        id: 'dev-user-id',
+        username: 'lindsayleeds',
+        full_name: 'Lindsay Leeds'
+      }
+      
+      setUser(devUser)
+      setProfile(devProfile)
+      setLoading(false)
+      return
+    }
+
     // Get initial session
     getInitialSession()
 

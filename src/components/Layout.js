@@ -102,8 +102,8 @@ const Layout = ({ children }) => {
                               href={item.href}
                               className={`${navigationMenuTriggerStyle()} ${
                                 item.current
-                                  ? 'bg-accent text-accent-foreground'
-                                  : ''
+                                  ? 'bg-finance-blue-600 text-white font-bold shadow-lg border-2 border-finance-blue-500 ring-2 ring-finance-blue-300 dark:ring-finance-blue-700'
+                                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                               }`}
                             >
                               <Icon className="w-4 h-4 mr-2" />

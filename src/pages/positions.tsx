@@ -9,7 +9,7 @@ import {
   flexRender,
   createColumnHelper
 } from '@tanstack/react-table'
-import { ChevronDown, ChevronUp, Filter, TrendingUp, TrendingDown } from 'lucide-react'
+import { ChevronDown, ChevronUp, Filter, TrendingUp, TrendingDown, Edit } from 'lucide-react'
 import { supabase } from '@/utils/supabase'
 import {
   Table,
@@ -20,6 +20,14 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
 
 interface Position {
   id: string
@@ -42,6 +50,19 @@ export default function Positions() {
   const [positions, setPositions] = useState<Position[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all')
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [editingPosition, setEditingPosition] = useState<Position | null>(null)
+  const [editForm, setEditForm] = useState({
+    ticker: '',
+    company_name: '',
+    start_date: '',
+    start_price: '',
+    end_date: '',
+    end_price: '',
+    start_price_override: '',
+    end_price_override: '',
+    status: 'Open' as 'Open' | 'Closed'
+  })
 
   // Fetch positions from Supabase
   useEffect(() => {
@@ -81,6 +102,63 @@ export default function Positions() {
     
     if (!actualStart || !actualEnd) return null
     return ((actualEnd - actualStart) / actualStart * 100)
+  }
+
+  const handleEditPosition = (position: Position) => {
+    setEditingPosition(position)
+    setEditForm({
+      ticker: position.ticker,
+      company_name: position.company_name || '',
+      start_date: position.start_date,
+      start_price: position.start_price?.toString() || '',
+      end_date: position.end_date || '',
+      end_price: position.end_price?.toString() || '',
+      start_price_override: position.start_price_override?.toString() || '',
+      end_price_override: position.end_price_override?.toString() || '',
+      status: position.status
+    })
+    setIsEditModalOpen(true)
+  }
+
+  const handleSavePosition = async () => {
+    if (!editingPosition) return
+    
+    try {
+      const updateData = {
+        ticker: editForm.ticker,
+        company_name: editForm.company_name || null,
+        start_date: editForm.start_date,
+        start_price: editForm.start_price ? parseFloat(editForm.start_price) : null,
+        end_date: editForm.end_date || null,
+        end_price: editForm.end_price ? parseFloat(editForm.end_price) : null,
+        start_price_override: editForm.start_price_override ? parseFloat(editForm.start_price_override) : null,
+        end_price_override: editForm.end_price_override ? parseFloat(editForm.end_price_override) : null,
+        status: editForm.status,
+        updated_at: new Date().toISOString()
+      }
+
+      const { error } = await supabase
+        .from('positions')
+        .update(updateData)
+        .eq('id', editingPosition.id)
+
+      if (error) {
+        console.error('Error updating position:', error)
+        return
+      }
+
+      // Update the local state
+      setPositions(prev => prev.map(pos => 
+        pos.id === editingPosition.id 
+          ? { ...pos, ...updateData }
+          : pos
+      ))
+
+      setIsEditModalOpen(false)
+      setEditingPosition(null)
+    } catch (error) {
+      console.error('Error updating position:', error)
+    }
   }
 
   const columns = useMemo(() => [
@@ -180,6 +258,21 @@ export default function Positions() {
           </span>
         )
       }
+    }),
+    columnHelper.display({
+      id: 'actions',
+      header: 'Actions',
+      cell: info => (
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="h-8 w-8 p-0 text-foreground hover:text-accent-foreground hover:bg-accent"
+          onClick={() => handleEditPosition(info.row.original)}
+        >
+          <span className="sr-only">Edit position</span>
+          <Edit className="h-4 w-4" />
+        </Button>
+      )
     }),
   ], [])
 
@@ -297,6 +390,149 @@ export default function Positions() {
             </Table>
           </div>
         </div>
+
+        {/* Edit Position Modal */}
+        <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Edit Position</DialogTitle>
+            </DialogHeader>
+            
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="ticker" className="block text-sm font-medium text-foreground mb-1">
+                    Ticker
+                  </label>
+                  <Input
+                    id="ticker"
+                    value={editForm.ticker}
+                    onChange={(e) => setEditForm({...editForm, ticker: e.target.value})}
+                    placeholder="AAPL"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="company" className="block text-sm font-medium text-foreground mb-1">
+                    Company
+                  </label>
+                  <Input
+                    id="company"
+                    value={editForm.company_name}
+                    onChange={(e) => setEditForm({...editForm, company_name: e.target.value})}
+                    placeholder="Apple Inc."
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="start_date" className="block text-sm font-medium text-foreground mb-1">
+                    Start Date
+                  </label>
+                  <Input
+                    id="start_date"
+                    type="date"
+                    value={editForm.start_date}
+                    onChange={(e) => setEditForm({...editForm, start_date: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="start_price" className="block text-sm font-medium text-foreground mb-1">
+                    Start Price
+                  </label>
+                  <Input
+                    id="start_price"
+                    type="number"
+                    step="0.01"
+                    value={editForm.start_price}
+                    onChange={(e) => setEditForm({...editForm, start_price: e.target.value})}
+                    placeholder="150.00"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="end_date" className="block text-sm font-medium text-foreground mb-1">
+                    End Date
+                  </label>
+                  <Input
+                    id="end_date"
+                    type="date"
+                    value={editForm.end_date}
+                    onChange={(e) => setEditForm({...editForm, end_date: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="end_price" className="block text-sm font-medium text-foreground mb-1">
+                    End Price
+                  </label>
+                  <Input
+                    id="end_price"
+                    type="number"
+                    step="0.01"
+                    value={editForm.end_price}
+                    onChange={(e) => setEditForm({...editForm, end_price: e.target.value})}
+                    placeholder="175.00"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="start_override" className="block text-sm font-medium text-foreground mb-1">
+                    Start Price Override
+                  </label>
+                  <Input
+                    id="start_override"
+                    type="number"
+                    step="0.01"
+                    value={editForm.start_price_override}
+                    onChange={(e) => setEditForm({...editForm, start_price_override: e.target.value})}
+                    placeholder="155.00"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="end_override" className="block text-sm font-medium text-foreground mb-1">
+                    End Price Override
+                  </label>
+                  <Input
+                    id="end_override"
+                    type="number"
+                    step="0.01"
+                    value={editForm.end_price_override}
+                    onChange={(e) => setEditForm({...editForm, end_price_override: e.target.value})}
+                    placeholder="180.00"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="status" className="block text-sm font-medium text-foreground mb-1">
+                  Status
+                </label>
+                <select
+                  id="status"
+                  value={editForm.status}
+                  onChange={(e) => setEditForm({...editForm, status: e.target.value as 'Open' | 'Closed'})}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="Open">Open</option>
+                  <option value="Closed">Closed</option>
+                </select>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSavePosition}>
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </Layout>
     </ProtectedRoute>
   )
