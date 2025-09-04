@@ -70,6 +70,8 @@ interface SnapshotPosition {
   dividends_paid: number | null
   created_at: string
   updated_at: string
+  // Position status from positions table
+  position_status?: string | null
 }
 
 const columnHelper = createColumnHelper<SnapshotPosition>()
@@ -92,6 +94,8 @@ export default function SnapshotDetail() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isFetchingPrices, setIsFetchingPrices] = useState(false)
   const [isFetchingDividends, setIsFetchingDividends] = useState(false)
+  const [portfolioStats, setPortfolioStats] = useState<any>(null)
+  const [statsLoading, setStatsLoading] = useState(false)
   const [editForm, setEditForm] = useState({
     name: '',
     start_date: '',
@@ -131,9 +135,9 @@ export default function SnapshotDetail() {
           notes: snapshotData.notes || '',
         })
 
-        // Fetch snapshot positions
+        // Fetch snapshot positions with position status using view
         const { data: positionsData, error: positionsError } = await supabase
-          .from('snapshot_positions')
+          .from('snapshot_positions_with_status')
           .select('*')
           .eq('snapshot_id', id)
           .order('ticker', { ascending: true })
@@ -144,6 +148,9 @@ export default function SnapshotDetail() {
         }
 
         setPositions(positionsData || [])
+        
+        // Fetch portfolio statistics
+        fetchPortfolioStats(id)
       } catch (error) {
         console.error('Error fetching data:', error)
       } finally {
@@ -154,6 +161,24 @@ export default function SnapshotDetail() {
 
     fetchData()
   }, [id, router])
+
+  // Fetch portfolio statistics
+  const fetchPortfolioStats = async (snapshotId: string) => {
+    setStatsLoading(true)
+    try {
+      const response = await fetch(`http://localhost:4021/snapshots/${snapshotId}/stats`)
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      const stats = await response.json()
+      setPortfolioStats(stats)
+    } catch (error) {
+      console.error('Error fetching portfolio stats:', error)
+      // Don't show error to user - stats are optional
+    } finally {
+      setStatsLoading(false)
+    }
+  }
 
   const handleEditSnapshot = () => {
     setIsEditModalOpen(true)
@@ -235,7 +260,7 @@ export default function SnapshotDetail() {
 
       // Refresh positions data after fetching prices
       const { data, error } = await supabase
-        .from('snapshot_positions')
+        .from('snapshot_positions_with_status')
         .select('*')
         .eq('snapshot_id', snapshot.id)
         .order('ticker', { ascending: true })
@@ -277,7 +302,7 @@ export default function SnapshotDetail() {
 
       // Refresh positions data after fetching dividends
       const { data, error } = await supabase
-        .from('snapshot_positions')
+        .from('snapshot_positions_with_status')
         .select('*')
         .eq('snapshot_id', snapshot.id)
         .order('ticker', { ascending: true })
@@ -295,6 +320,372 @@ export default function SnapshotDetail() {
     } finally {
       setIsFetchingDividends(false)
     }
+  }
+
+  const handleExportToHTML = () => {
+    if (!snapshot || !positions.length) return
+
+    // Separate open and closed positions based on position_status from positions table
+    const openPositions = positions.filter(p => p.position_status !== 'Closed')
+    const closedPositions = positions.filter(p => p.position_status === 'Closed')
+
+    const getReturnClass = (returnPct: number) => {
+      if (returnPct < 0) return 'negative'
+      if (returnPct < 15) return 'low-positive'
+      if (returnPct < 30) return 'positive'
+      if (returnPct < 50) return 'more-positive'
+      return 'very-positive'
+    }
+
+    const formatReturn = (startPrice: number | null, endPrice: number | null, dividends: number) => {
+      if (!startPrice || !endPrice || startPrice === 0) return { return: 0, formatted: '-' }
+      const totalReturn = ((endPrice + dividends) - startPrice) / startPrice * 100
+      return { return: totalReturn, formatted: `${totalReturn >= 0 ? '+' : ''}${totalReturn.toFixed(1)}%` }
+    }
+
+    const calculateHoldingDays = (startDate: string, endDate: string) => {
+      const start = new Date(startDate)
+      const end = new Date(endDate)
+      const diffTime = Math.abs(end.getTime() - start.getTime())
+      return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    }
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Microcap Opportunities Portfolio - ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: '2-digit' })}</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            margin: 20px;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        h1 {
+            background: #fff;
+            margin: 0;
+            padding: 20px 25px 10px 25px;
+            font-size: 24px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .period-info {
+            padding: 0 25px 20px 25px;
+            font-size: 18px;
+            font-weight: 500;
+            color: #495057;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .section-title {
+            padding: 20px 25px 0 25px;
+            font-size: 20px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin: 0;
+            background-color: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        .section-header {
+            background-color: #f8f9fa;
+            padding: 12px 15px 12px 25px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 16px;
+            color: #2c3e50;
+            border-bottom: 2px solid #dee2e6;
+            white-space: nowrap;
+        }
+        
+        .table-container {
+            margin-bottom: 30px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0;
+        }
+        
+        th {
+            background-color: #f8f9fa;
+            padding: 12px 15px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 14px;
+            color: #495057;
+            border-bottom: 2px solid #dee2e6;
+            white-space: nowrap;
+        }
+        
+        th.numeric-header {
+            text-align: right;
+        }
+        
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #f1f3f4;
+            font-size: 14px;
+            vertical-align: middle;
+        }
+        
+        td:first-child {
+            padding-left: 25px;
+        }
+        
+        td:last-child, th:last-child {
+            padding-right: 25px;
+        }
+        
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        
+        tr:hover {
+            background-color: #e9ecef;
+        }
+        
+        .ticker {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .status {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            text-align: center;
+            white-space: nowrap;
+        }
+        
+        .status.open {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .status.closed {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .number {
+            text-align: right;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        }
+        
+        .percentage {
+            font-weight: 600;
+            text-align: center;
+        }
+        
+        .low-positive {
+            background-color: rgb(102, 187, 199);
+            color: white;
+            padding: 3px 10px;
+            border-radius: 4px;
+            width: 50px;
+            text-align: center;
+            display: inline-block;
+        }
+        
+        .positive {
+            background-color: rgb(83, 173, 200);
+            color: white;
+            padding: 3px 10px;
+            border-radius: 4px;
+            width: 50px;
+            text-align: center;
+            display: inline-block;
+        }
+        
+        .more-positive {
+            background-color: rgb(25, 117, 179);
+            color: white;
+            padding: 3px 10px;
+            border-radius: 4px;
+            width: 50px;
+            text-align: center;
+            display: inline-block;
+        }
+        
+        .very-positive {
+            background-color: rgb(37, 75, 140);
+            color: white;
+            padding: 3px 10px;
+            border-radius: 4px;
+            width: 50px;
+            text-align: center;
+            display: inline-block;
+        }
+        
+        .negative {
+            background-color: #D9D9D9;
+            color: #333333;
+            padding: 3px 10px;
+            border-radius: 4px;
+            width: 50px;
+            text-align: center;
+            display: inline-block;
+        }
+        
+        .date {
+            white-space: nowrap;
+        }
+        
+        .footer {
+            padding: 15px 25px;
+            background-color: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+            font-size: 12px;
+            color: #6c757d;
+            text-align: center;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 0;
+            }
+            
+            table {
+                font-size: 12px;
+            }
+            
+            th, td {
+                padding: 8px 6px;
+            }
+            
+            h1 {
+                font-size: 20px;
+                padding: 15px 20px 10px 20px;
+            }
+            
+            .period-info {
+                padding: 0 20px 15px 20px;
+                font-size: 16px;
+            }
+            
+            .section-title {
+                padding: 15px 20px 0 20px;
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Microcap Opportunities Portfolio</h1>
+        <div class="period-info">Period: ${snapshot.start_date || 'N/A'} to ${snapshot.end_date || 'N/A'}</div>
+        
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="section-header">Open Positions (${openPositions.length})</th>
+                        <th>Start Date</th>
+                        <th>End Date</th>
+                        <th class="numeric-header">Start Price</th>
+                        <th class="numeric-header">End Price</th>
+                        <th class="numeric-header">Dividends</th>
+                        <th>Return Pct</th>
+                        <th class="numeric-header">Holding Days</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${openPositions.map(pos => {
+                      const dividends = Number(pos.dividends_paid) || 0
+                      const returnCalc = formatReturn(pos.start_price, pos.end_price, dividends)
+                      const holdingDays = calculateHoldingDays(pos.start_date, pos.end_date)
+                      const returnClass = getReturnClass(returnCalc.return)
+                      
+                      return `
+                    <tr>
+                        <td class="ticker">${pos.ticker}</td>
+                        <td class="date">${new Date(pos.start_date).toLocaleDateString()}</td>
+                        <td class="date">${new Date(pos.end_date).toLocaleDateString()}</td>
+                        <td class="number">$${pos.start_price?.toFixed(2) || '0.00'}</td>
+                        <td class="number">$${pos.end_price?.toFixed(2) || '0.00'}</td>
+                        <td class="number">$${dividends.toFixed(2)}</td>
+                        <td class="percentage"><span class="${returnClass}">${returnCalc.formatted}</span></td>
+                        <td class="number">${holdingDays}</td>
+                    </tr>`
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>
+        
+        ${closedPositions.length > 0 ? `
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="section-header">Closed Positions (${closedPositions.length})</th>
+                        <th>Start Date</th>
+                        <th>End Date</th>
+                        <th class="numeric-header">Start Price</th>
+                        <th class="numeric-header">End Price</th>
+                        <th class="numeric-header">Dividends</th>
+                        <th>Return Pct</th>
+                        <th class="numeric-header">Holding Days</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${closedPositions.map(pos => {
+                      const dividends = Number(pos.dividends_paid) || 0
+                      const returnCalc = formatReturn(pos.start_price, pos.end_price, dividends)
+                      const holdingDays = calculateHoldingDays(pos.start_date, pos.end_date)
+                      const returnClass = getReturnClass(returnCalc.return)
+                      
+                      return `
+                    <tr>
+                        <td class="ticker">${pos.ticker}</td>
+                        <td class="date">${new Date(pos.start_date).toLocaleDateString()}</td>
+                        <td class="date">${new Date(pos.end_date).toLocaleDateString()}</td>
+                        <td class="number">$${pos.start_price?.toFixed(2) || '0.00'}</td>
+                        <td class="number">$${pos.end_price?.toFixed(2) || '0.00'}</td>
+                        <td class="number">$${dividends.toFixed(2)}</td>
+                        <td class="percentage"><span class="${returnClass}">${returnCalc.formatted}</span></td>
+                        <td class="number">${holdingDays}</td>
+                    </tr>`
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>
+        ` : ''}
+        
+        <div class="footer">
+            Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: '2-digit' })} • Data from Portfolio Snapshot ${snapshot.id}
+        </div>
+    </div>
+</body>
+</html>`
+
+    // Create and download the file
+    const blob = new Blob([html], { type: 'text/html' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const fileName = `portfolio-snapshot-${snapshot.end_date || 'export'}.html`
+    a.href = url
+    a.download = fileName
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(url)
+    document.body.removeChild(a)
   }
 
   // Calculate summary statistics
@@ -432,10 +823,11 @@ export default function SnapshotDetail() {
         )
       }
     }),
-    columnHelper.accessor('status', {
+    columnHelper.display({
+      id: 'position_status',
       header: 'Status',
       cell: info => {
-        const status = info.getValue()
+        const status = info.row.original.position_status
         return (
           <span className={`px-2 py-1 rounded-full text-xs font-medium ${
             status === 'Open' 
@@ -543,7 +935,7 @@ export default function SnapshotDetail() {
                   <Edit3 className="h-4 w-4" />
                   Edit
                 </Button>
-                <Button variant="outline" className="flex items-center gap-2">
+                <Button variant="outline" onClick={handleExportToHTML} className="flex items-center gap-2">
                   <Download className="h-4 w-4" />
                   Export
                 </Button>
