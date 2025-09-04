@@ -56,9 +56,7 @@ export default function Positions() {
     ticker: '',
     company_name: '',
     start_date: '',
-    start_price: '',
     end_date: '',
-    end_price: '',
     start_price_override: '',
     end_price_override: '',
     status: 'Open' as 'Open' | 'Closed'
@@ -110,9 +108,7 @@ export default function Positions() {
       ticker: position.ticker,
       company_name: position.company_name || '',
       start_date: position.start_date,
-      start_price: position.start_price?.toString() || '',
       end_date: position.end_date || '',
-      end_price: position.end_price?.toString() || '',
       start_price_override: position.start_price_override?.toString() || '',
       end_price_override: position.end_price_override?.toString() || '',
       status: position.status
@@ -128,9 +124,7 @@ export default function Positions() {
         ticker: editForm.ticker,
         company_name: editForm.company_name || null,
         start_date: editForm.start_date,
-        start_price: editForm.start_price ? parseFloat(editForm.start_price) : null,
         end_date: editForm.end_date || null,
-        end_price: editForm.end_price ? parseFloat(editForm.end_price) : null,
         start_price_override: editForm.start_price_override ? parseFloat(editForm.start_price_override) : null,
         end_price_override: editForm.end_price_override ? parseFloat(editForm.end_price_override) : null,
         status: editForm.status,
@@ -437,22 +431,6 @@ export default function Positions() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="start_price" className="block text-sm font-medium text-foreground mb-1">
-                    Start Price
-                  </label>
-                  <Input
-                    id="start_price"
-                    type="number"
-                    step="0.01"
-                    value={editForm.start_price}
-                    onChange={(e) => setEditForm({...editForm, start_price: e.target.value})}
-                    placeholder="150.00"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
                   <label htmlFor="end_date" className="block text-sm font-medium text-foreground mb-1">
                     End Date
                   </label>
@@ -461,19 +439,6 @@ export default function Positions() {
                     type="date"
                     value={editForm.end_date}
                     onChange={(e) => setEditForm({...editForm, end_date: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="end_price" className="block text-sm font-medium text-foreground mb-1">
-                    End Price
-                  </label>
-                  <Input
-                    id="end_price"
-                    type="number"
-                    step="0.01"
-                    value={editForm.end_price}
-                    onChange={(e) => setEditForm({...editForm, end_price: e.target.value})}
-                    placeholder="175.00"
                   />
                 </div>
               </div>
