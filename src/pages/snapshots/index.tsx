@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useRouter } from 'next/router'
 import Layout from '@/components/Layout'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { 
@@ -9,7 +10,7 @@ import {
   flexRender,
   createColumnHelper
 } from '@tanstack/react-table'
-import { ChevronDown, ChevronUp, Camera, Calendar, TrendingUp, Eye, Trash2, Plus } from 'lucide-react'
+import { ChevronDown, ChevronUp, Camera, Calendar, TrendingUp, Eye, Trash2, Plus, Edit3 } from 'lucide-react'
 import { supabase } from '@/utils/supabase'
 import {
   Table,
@@ -31,6 +32,7 @@ import {
 
 interface Snapshot {
   id: string
+  name: string | null
   start_date: string | null
   end_date: string | null
   notes: string | null
@@ -40,15 +42,18 @@ interface Snapshot {
   updated_at: string
 }
 
+
 const columnHelper = createColumnHelper<Snapshot>()
 
 export default function Snapshots() {
+  const router = useRouter()
   const [snapshots, setSnapshots] = useState<Snapshot[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingSnapshot, setEditingSnapshot] = useState<Snapshot | null>(null)
   const [isAddMode, setIsAddMode] = useState(false)
   const [editForm, setEditForm] = useState({
+    name: '',
     start_date: '',
     end_date: '',
     notes: '',
@@ -79,10 +84,15 @@ export default function Snapshots() {
     fetchSnapshots()
   }, [])
 
+  const handleViewSnapshot = useCallback((snapshot: Snapshot) => {
+    router.push(`/snapshots/${snapshot.id}`)
+  }, [router])
+
   const handleEditSnapshot = (snapshot: Snapshot) => {
     setEditingSnapshot(snapshot)
     setIsAddMode(false)
     setEditForm({
+      name: snapshot.name || '',
       start_date: snapshot.start_date || '',
       end_date: snapshot.end_date || '',
       notes: snapshot.notes || '',
@@ -95,6 +105,7 @@ export default function Snapshots() {
     setIsAddMode(true)
     const today = new Date().toISOString().split('T')[0]
     setEditForm({
+      name: '',
       start_date: '',
       end_date: today,
       notes: '',
@@ -105,6 +116,7 @@ export default function Snapshots() {
   const handleSaveSnapshot = async () => {
     try {
       const snapshotData = {
+        name: editForm.name || null,
         start_date: editForm.start_date || null,
         end_date: editForm.end_date || null,
         notes: editForm.notes || null,
@@ -164,7 +176,7 @@ export default function Snapshots() {
   }
 
   const handleDeleteSnapshot = async (snapshot: Snapshot) => {
-    const displayName = snapshot.end_date ? `snapshot ending ${new Date(snapshot.end_date).toLocaleDateString()}` : 'this snapshot'
+    const displayName = snapshot.name || (snapshot.end_date ? `snapshot ending ${new Date(snapshot.end_date).toLocaleDateString()}` : 'this snapshot')
     if (!confirm(`Are you sure you want to delete ${displayName}?`)) {
       return
     }
@@ -187,6 +199,14 @@ export default function Snapshots() {
   }
 
   const columns = useMemo(() => [
+    columnHelper.accessor('name', {
+      header: 'Name',
+      cell: info => (
+        <div className="text-sm font-medium text-foreground">
+          {info.getValue() || '-'}
+        </div>
+      )
+    }),
     columnHelper.accessor('start_date', {
       header: 'Start Date',
       cell: info => (
@@ -203,43 +223,6 @@ export default function Snapshots() {
         </div>
       )
     }),
-    columnHelper.accessor('status', {
-      header: 'Status',
-      cell: info => {
-        const status = info.getValue()
-        return (
-          <div className={`text-sm font-medium ${
-            status === 'completed' ? 'text-green-600' : 
-            status === 'pending' ? 'text-yellow-600' : 
-            'text-red-600'
-          }`}>
-            {status.charAt(0).toUpperCase() + status.slice(1)}
-          </div>
-        )
-      }
-    }),
-    columnHelper.accessor('overall_portfolio_return_pct', {
-      header: 'Portfolio Return',
-      cell: info => {
-        const value = info.getValue()
-        if (value === null) {
-          return <div className="text-sm text-muted-foreground">-</div>
-        }
-        return (
-          <div className={`text-sm font-medium ${value >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-            {value.toFixed(2)}%
-          </div>
-        )
-      }
-    }),
-    columnHelper.accessor('notes', {
-      header: 'Notes',
-      cell: info => (
-        <div className="text-muted-foreground max-w-xs truncate">
-          {info.getValue() || '-'}
-        </div>
-      )
-    }),
     columnHelper.display({
       id: 'actions',
       header: 'Actions',
@@ -249,10 +232,19 @@ export default function Snapshots() {
             variant="ghost" 
             size="sm" 
             className="h-8 w-8 p-0 text-foreground hover:text-accent-foreground hover:bg-accent"
+            onClick={() => handleViewSnapshot(info.row.original)}
+          >
+            <span className="sr-only">View snapshot</span>
+            <Eye className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-8 w-8 p-0 text-foreground hover:text-accent-foreground hover:bg-accent"
             onClick={() => handleEditSnapshot(info.row.original)}
           >
             <span className="sr-only">Edit snapshot</span>
-            <Eye className="h-4 w-4" />
+            <Edit3 className="h-4 w-4" />
           </Button>
           <Button 
             variant="ghost" 
@@ -266,7 +258,7 @@ export default function Snapshots() {
         </div>
       )
     }),
-  ], [])
+  ], [handleViewSnapshot])
 
   const table = useReactTable({
     data: snapshots,
@@ -435,6 +427,18 @@ export default function Snapshots() {
             
             <div className="grid gap-4 py-4">
               <div>
+                <label htmlFor="name" className="block text-sm font-medium text-foreground mb-1">
+                  Name
+                </label>
+                <Input
+                  id="name"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                  placeholder="Q1 2024 Snapshot"
+                />
+              </div>
+
+              <div>
                 <label htmlFor="start_date" className="block text-sm font-medium text-foreground mb-1">
                   Start Date
                 </label>
@@ -490,6 +494,7 @@ export default function Snapshots() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
       </Layout>
     </ProtectedRoute>
   )

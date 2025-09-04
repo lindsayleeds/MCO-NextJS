@@ -9,7 +9,7 @@ import {
   flexRender,
   createColumnHelper
 } from '@tanstack/react-table'
-import { ChevronDown, ChevronUp, Filter, TrendingUp, TrendingDown, Edit, Plus } from 'lucide-react'
+import { ChevronDown, ChevronUp, Filter, TrendingUp, TrendingDown, Edit, Plus, Trash2 } from 'lucide-react'
 import { supabase } from '@/utils/supabase'
 import {
   Table,
@@ -116,6 +116,45 @@ export default function Positions() {
       status: position.status
     })
     setIsModalOpen(true)
+  }
+
+  const handleDeletePosition = async (position: Position) => {
+    const displayName = `${position.ticker}${position.company_name ? ` (${position.company_name})` : ''}`
+    if (!confirm(`Are you sure you want to delete ${displayName}? This will also remove all snapshot data related to this position.`)) {
+      return
+    }
+
+    try {
+      // First, delete related snapshot_positions
+      const { error: snapshotPositionsError } = await supabase
+        .from('snapshot_positions')
+        .delete()
+        .eq('ticker', position.ticker)
+
+      if (snapshotPositionsError) {
+        console.error('Error deleting snapshot positions:', snapshotPositionsError)
+        alert('Error deleting position. Please try again.')
+        return
+      }
+
+      // Then delete the position
+      const { error: positionError } = await supabase
+        .from('positions')
+        .delete()
+        .eq('id', position.id)
+
+      if (positionError) {
+        console.error('Error deleting position:', positionError)
+        alert('Error deleting position. Please try again.')
+        return
+      }
+
+      // Update local state
+      setPositions(prev => prev.filter(p => p.id !== position.id))
+    } catch (error) {
+      console.error('Error deleting position:', error)
+      alert('Error deleting position. Please try again.')
+    }
   }
 
   const handleAddPosition = () => {
@@ -302,15 +341,26 @@ export default function Positions() {
       id: 'actions',
       header: 'Actions',
       cell: info => (
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          className="h-8 w-8 p-0 text-foreground hover:text-accent-foreground hover:bg-accent"
-          onClick={() => handleEditPosition(info.row.original)}
-        >
-          <span className="sr-only">Edit position</span>
-          <Edit className="h-4 w-4" />
-        </Button>
+        <div className="flex space-x-2">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-8 w-8 p-0 text-foreground hover:text-accent-foreground hover:bg-accent"
+            onClick={() => handleEditPosition(info.row.original)}
+          >
+            <span className="sr-only">Edit position</span>
+            <Edit className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-8 w-8 p-0 text-destructive hover:text-destructive-foreground hover:bg-destructive"
+            onClick={() => handleDeletePosition(info.row.original)}
+          >
+            <span className="sr-only">Delete position</span>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       )
     }),
   ], [])
