@@ -9,7 +9,7 @@ import {
   flexRender,
   createColumnHelper
 } from '@tanstack/react-table'
-import { ChevronDown, ChevronUp, Filter, TrendingUp, TrendingDown, Edit } from 'lucide-react'
+import { ChevronDown, ChevronUp, Filter, TrendingUp, TrendingDown, Edit, Plus } from 'lucide-react'
 import { supabase } from '@/utils/supabase'
 import {
   Table,
@@ -50,8 +50,9 @@ export default function Positions() {
   const [positions, setPositions] = useState<Position[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all')
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingPosition, setEditingPosition] = useState<Position | null>(null)
+  const [isAddMode, setIsAddMode] = useState(false)
   const [editForm, setEditForm] = useState({
     ticker: '',
     company_name: '',
@@ -104,6 +105,7 @@ export default function Positions() {
 
   const handleEditPosition = (position: Position) => {
     setEditingPosition(position)
+    setIsAddMode(false)
     setEditForm({
       ticker: position.ticker,
       company_name: position.company_name || '',
@@ -113,14 +115,27 @@ export default function Positions() {
       end_price_override: position.end_price_override?.toString() || '',
       status: position.status
     })
-    setIsEditModalOpen(true)
+    setIsModalOpen(true)
+  }
+
+  const handleAddPosition = () => {
+    setEditingPosition(null)
+    setIsAddMode(true)
+    setEditForm({
+      ticker: '',
+      company_name: '',
+      start_date: '',
+      end_date: '',
+      start_price_override: '',
+      end_price_override: '',
+      status: 'Open'
+    })
+    setIsModalOpen(true)
   }
 
   const handleSavePosition = async () => {
-    if (!editingPosition) return
-    
     try {
-      const updateData = {
+      const positionData = {
         ticker: editForm.ticker,
         company_name: editForm.company_name || null,
         start_date: editForm.start_date,
@@ -128,30 +143,60 @@ export default function Positions() {
         start_price_override: editForm.start_price_override ? parseFloat(editForm.start_price_override) : null,
         end_price_override: editForm.end_price_override ? parseFloat(editForm.end_price_override) : null,
         status: editForm.status,
-        updated_at: new Date().toISOString()
       }
 
-      const { error } = await supabase
-        .from('positions')
-        .update(updateData)
-        .eq('id', editingPosition.id)
+      if (isAddMode) {
+        // Add new position
+        const { data, error } = await supabase
+          .from('positions')
+          .insert([{
+            ...positionData,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }])
+          .select()
 
-      if (error) {
-        console.error('Error updating position:', error)
-        return
+        if (error) {
+          console.error('Error adding position:', error)
+          return
+        }
+
+        // Add to local state
+        if (data && data[0]) {
+          setPositions(prev => [data[0], ...prev])
+        }
+      } else {
+        // Update existing position
+        if (!editingPosition) return
+        
+        const updateData = {
+          ...positionData,
+          updated_at: new Date().toISOString()
+        }
+
+        const { error } = await supabase
+          .from('positions')
+          .update(updateData)
+          .eq('id', editingPosition.id)
+
+        if (error) {
+          console.error('Error updating position:', error)
+          return
+        }
+
+        // Update the local state
+        setPositions(prev => prev.map(pos => 
+          pos.id === editingPosition.id 
+            ? { ...pos, ...updateData }
+            : pos
+        ))
       }
 
-      // Update the local state
-      setPositions(prev => prev.map(pos => 
-        pos.id === editingPosition.id 
-          ? { ...pos, ...updateData }
-          : pos
-      ))
-
-      setIsEditModalOpen(false)
+      setIsModalOpen(false)
       setEditingPosition(null)
+      setIsAddMode(false)
     } catch (error) {
-      console.error('Error updating position:', error)
+      console.error('Error saving position:', error)
     }
   }
 
@@ -298,10 +343,18 @@ export default function Positions() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-foreground">Positions</h1>
-            <p className="text-muted-foreground mt-2">
-              Manage and track your investment positions
-            </p>
+            <div className="flex justify-between items-start">
+              <div>
+                <h1 className="text-3xl font-bold text-foreground">Positions</h1>
+                <p className="text-muted-foreground mt-2">
+                  Manage and track your investment positions
+                </p>
+              </div>
+              <Button onClick={handleAddPosition} className="flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                Add Position
+              </Button>
+            </div>
           </div>
 
           {/* Filters */}
@@ -385,11 +438,11 @@ export default function Positions() {
           </div>
         </div>
 
-        {/* Edit Position Modal */}
-        <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        {/* Add/Edit Position Modal */}
+        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
-              <DialogTitle>Edit Position</DialogTitle>
+              <DialogTitle>{isAddMode ? 'Add Position' : 'Edit Position'}</DialogTitle>
             </DialogHeader>
             
             <div className="grid gap-4 py-4">
@@ -489,11 +542,11 @@ export default function Positions() {
             </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>
+              <Button variant="outline" onClick={() => setIsModalOpen(false)}>
                 Cancel
               </Button>
               <Button onClick={handleSavePosition}>
-                Save Changes
+                {isAddMode ? 'Add Position' : 'Save Changes'}
               </Button>
             </DialogFooter>
           </DialogContent>
