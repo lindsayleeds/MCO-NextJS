@@ -9,7 +9,7 @@ import {
   flexRender,
   createColumnHelper
 } from '@tanstack/react-table'
-import { ChevronDown, ChevronUp, Filter, TrendingUp, TrendingDown, Edit, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Filter, TrendingUp, TrendingDown, Edit, Plus, Trash2, RefreshCw } from 'lucide-react'
 import { supabase } from '@/utils/supabase'
 import {
   Table,
@@ -53,6 +53,7 @@ export default function Positions() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingPosition, setEditingPosition] = useState<Position | null>(null)
   const [isAddMode, setIsAddMode] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
   const [editForm, setEditForm] = useState({
     ticker: '',
     company_name: '',
@@ -154,6 +155,48 @@ export default function Positions() {
     } catch (error) {
       console.error('Error deleting position:', error)
       alert('Error deleting position. Please try again.')
+    }
+  }
+
+  const handleSyncNames = async () => {
+    setIsSyncing(true)
+    
+    try {
+      const response = await fetch('http://localhost:4021/snapshots/populate-all-company-names', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          force_update: false
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const result = await response.json()
+      console.log('Sync result:', result)
+
+      // Refresh positions data after sync
+      const { data, error } = await supabase
+        .from('positions')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error refreshing positions:', error)
+      } else {
+        setPositions(data || [])
+      }
+
+      alert('Company names synced successfully!')
+    } catch (error) {
+      console.error('Error syncing company names:', error)
+      alert('Error syncing company names. Please check if the FastAPI server is running on port 4021.')
+    } finally {
+      setIsSyncing(false)
     }
   }
 
@@ -408,10 +451,21 @@ export default function Positions() {
                   Manage and track your investment positions
                 </p>
               </div>
-              <Button onClick={handleAddPosition} className="flex items-center gap-2">
-                <Plus className="h-4 w-4" />
-                Add Position
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button 
+                  onClick={handleSyncNames} 
+                  disabled={isSyncing}
+                  variant="outline" 
+                  className="flex items-center gap-2"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                  {isSyncing ? 'Syncing...' : 'Sync Names'}
+                </Button>
+                <Button onClick={handleAddPosition} className="flex items-center gap-2">
+                  <Plus className="h-4 w-4" />
+                  Add Position
+                </Button>
+              </div>
             </div>
           </div>
 

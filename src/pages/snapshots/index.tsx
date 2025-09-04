@@ -52,6 +52,7 @@ export default function Snapshots() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingSnapshot, setEditingSnapshot] = useState<Snapshot | null>(null)
   const [isAddMode, setIsAddMode] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [editForm, setEditForm] = useState({
     name: '',
     start_date: '',
@@ -103,17 +104,23 @@ export default function Snapshots() {
   const handleAddSnapshot = () => {
     setEditingSnapshot(null)
     setIsAddMode(true)
-    const today = new Date().toISOString().split('T')[0]
+    
+    // Get last day of previous month
+    const today = new Date()
+    const lastMonth = new Date(today.getFullYear(), today.getMonth(), 0) // 0 gets last day of previous month
+    const lastDayPrevMonth = lastMonth.toISOString().split('T')[0]
+    
     setEditForm({
       name: '',
-      start_date: '',
-      end_date: today,
+      start_date: '2024-08-05',
+      end_date: lastDayPrevMonth,
       notes: '',
     })
     setIsModalOpen(true)
   }
 
   const handleSaveSnapshot = async () => {
+    setIsSaving(true)
     try {
       const snapshotData = {
         name: editForm.name || null,
@@ -123,24 +130,49 @@ export default function Snapshots() {
       }
 
       if (isAddMode) {
-        const { data, error } = await supabase
-          .from('snapshots')
-          .insert([{
-            ...snapshotData,
-            status: 'pending',
-            overall_portfolio_return_pct: null,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }])
-          .select()
-
-        if (error) {
-          console.error('Error adding snapshot:', error)
-          return
+        // Call FastAPI endpoint to create snapshot with positions
+        const requestBody = {
+          end_date: editForm.end_date,
+          ...(editForm.start_date && { start_date: editForm.start_date }),
+          ...(editForm.notes && { notes: editForm.notes })
         }
 
-        if (data && data[0]) {
-          setSnapshots(prev => [data[0], ...prev])
+        const response = await fetch('http://localhost:4021/snapshots/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody)
+        })
+
+        if (!response.ok) {
+          const errorData = await response.text()
+          throw new Error(`HTTP error! status: ${response.status}, message: ${errorData}`)
+        }
+
+        const result = await response.json()
+        console.log('Snapshot created:', result)
+
+        // After FastAPI creates the snapshot, update the name if provided
+        if (editForm.name && result.snapshot_id) {
+          const { error: updateError } = await supabase
+            .from('snapshots')
+            .update({ name: editForm.name })
+            .eq('id', result.snapshot_id)
+
+          if (updateError) {
+            console.error('Error updating snapshot name:', updateError)
+          }
+        }
+
+        // Refresh the snapshots list
+        const { data: refreshedSnapshots, error: fetchError } = await supabase
+          .from('snapshots')
+          .select('*')
+          .order('end_date', { ascending: false })
+
+        if (!fetchError && refreshedSnapshots) {
+          setSnapshots(refreshedSnapshots)
         }
       } else {
         if (!editingSnapshot) return
@@ -172,6 +204,9 @@ export default function Snapshots() {
       setIsAddMode(false)
     } catch (error) {
       console.error('Error saving snapshot:', error)
+      alert(`Error ${isAddMode ? 'creating' : 'updating'} snapshot: ${error.message}`)
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -300,7 +335,7 @@ export default function Snapshots() {
               </div>
               <Button onClick={handleAddSnapshot} className="flex items-center gap-2">
                 <Plus className="h-4 w-4" />
-                Take Snapshot
+                Add Snapshot
               </Button>
             </div>
           </div>
@@ -391,10 +426,10 @@ export default function Snapshots() {
                       <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
                         <Camera className="w-12 h-12 mb-4 opacity-50" />
                         <p className="text-lg font-medium mb-2">No snapshots yet</p>
-                        <p className="text-sm mb-4">Take your first portfolio snapshot to track performance over time</p>
+                        <p className="text-sm mb-4">Add your first portfolio snapshot to track performance over time</p>
                         <Button onClick={handleAddSnapshot} className="flex items-center gap-2">
                           <Plus className="h-4 w-4" />
-                          Take Snapshot
+                          Add Snapshot
                         </Button>
                       </div>
                     </TableCell>
@@ -421,7 +456,7 @@ export default function Snapshots() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Camera className="w-5 h-5" />
-                {isAddMode ? 'Take New Snapshot' : 'Edit Snapshot'}
+                {isAddMode ? 'Add New Snapshot' : 'Edit Snapshot'}
               </DialogTitle>
             </DialogHeader>
             
@@ -488,8 +523,11 @@ export default function Snapshots() {
               <Button variant="outline" onClick={() => setIsModalOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleSaveSnapshot}>
-                {isAddMode ? 'Take Snapshot' : 'Save Changes'}
+              <Button onClick={handleSaveSnapshot} disabled={isSaving}>
+                {isSaving 
+                  ? (isAddMode ? 'Creating...' : 'Saving...')
+                  : (isAddMode ? 'Add Snapshot' : 'Save Changes')
+                }
               </Button>
             </DialogFooter>
           </DialogContent>

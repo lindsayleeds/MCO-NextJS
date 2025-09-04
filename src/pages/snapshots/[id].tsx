@@ -22,7 +22,8 @@ import {
   DollarSign,
   Edit3,
   Trash2,
-  Download
+  Download,
+  RefreshCw
 } from 'lucide-react'
 import { supabase } from '@/utils/supabase'
 import {
@@ -82,7 +83,14 @@ export default function SnapshotDetail() {
   const [loading, setLoading] = useState(true)
   const [positionsLoading, setPositionsLoading] = useState(true)
   const [globalFilter, setGlobalFilter] = useState('')
+  const [sorting, setSorting] = useState([
+    {
+      id: 'ticker',
+      desc: false
+    }
+  ])
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isFetchingPrices, setIsFetchingPrices] = useState(false)
   const [editForm, setEditForm] = useState({
     name: '',
     start_date: '',
@@ -204,15 +212,65 @@ export default function SnapshotDetail() {
     }
   }
 
+  const handleFetchPrices = async () => {
+    if (!snapshot) return
+
+    setIsFetchingPrices(true)
+    
+    try {
+      const response = await fetch(`http://localhost:4021/snapshots/${snapshot.id}/fetch-prices`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const result = await response.json()
+      console.log('Fetch prices result:', result)
+
+      // Refresh positions data after fetching prices
+      const { data, error } = await supabase
+        .from('snapshot_positions')
+        .select('*')
+        .eq('snapshot_id', snapshot.id)
+        .order('ticker', { ascending: true })
+
+      if (error) {
+        console.error('Error refreshing positions:', error)
+      } else {
+        setPositions(data || [])
+      }
+
+      alert('Prices fetched successfully!')
+    } catch (error) {
+      console.error('Error fetching prices:', error)
+      alert('Error fetching prices. Please check if the FastAPI server is running on port 4021.')
+    } finally {
+      setIsFetchingPrices(false)
+    }
+  }
+
   // Calculate summary statistics
   const summaryStats = useMemo(() => {
+    if (!positions || positions.length === 0) {
+      return {
+        totalPositions: 0,
+        winners: 0,
+        losers: 0,
+        totalDividends: 0,
+        averageReturn: 0
+      }
+    }
+
     const totalPositions = positions.length
     const winners = positions.filter(p => (p.return_pct_at_snapshot ?? 0) > 0).length
     const losers = positions.filter(p => (p.return_pct_at_snapshot ?? 0) < 0).length
     const totalDividends = positions.reduce((sum, p) => sum + (Number(p.dividends_paid) || 0), 0)
-    const averageReturn = positions.length > 0 
-      ? positions.reduce((sum, p) => sum + (p.return_pct_at_snapshot || 0), 0) / positions.length
-      : 0
+    const averageReturn = positions.reduce((sum, p) => sum + (p.return_pct_at_snapshot || 0), 0) / positions.length
 
     return {
       totalPositions,
@@ -332,14 +390,10 @@ export default function SnapshotDetail() {
     getSortedRowModel: getSortedRowModel(),
     state: {
       globalFilter,
-      sorting: [
-        {
-          id: 'ticker',
-          desc: false
-        }
-      ]
+      sorting,
     },
     onGlobalFilterChange: setGlobalFilter,
+    onSortingChange: setSorting,
   })
 
   if (loading) {
@@ -425,6 +479,15 @@ export default function SnapshotDetail() {
                 <Button variant="outline" className="flex items-center gap-2">
                   <Download className="h-4 w-4" />
                   Export
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={handleFetchPrices}
+                  disabled={isFetchingPrices}
+                  className="flex items-center gap-2"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isFetchingPrices ? 'animate-spin' : ''}`} />
+                  {isFetchingPrices ? 'Fetching...' : 'Fetch Prices'}
                 </Button>
                 <Button 
                   variant="destructive" 
