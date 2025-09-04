@@ -371,6 +371,14 @@ export default function Positions() {
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    initialState: {
+      sorting: [
+        {
+          id: 'ticker',
+          desc: false
+        }
+      ]
+    }
   })
 
   if (loading) {

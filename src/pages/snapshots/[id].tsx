@@ -332,6 +332,12 @@ export default function SnapshotDetail() {
     getSortedRowModel: getSortedRowModel(),
     state: {
       globalFilter,
+      sorting: [
+        {
+          id: 'ticker',
+          desc: false
+        }
+      ]
     },
     onGlobalFilterChange: setGlobalFilter,
   })
