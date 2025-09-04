@@ -58,9 +58,9 @@ const Layout = ({ children }) => {
     },
     {
       name: 'Snapshots',
-      href: '/analysis',
+      href: '/snapshots',
       icon: PieChart,
-      current: router.pathname.startsWith('/analysis')
+      current: router.pathname.startsWith('/snapshots')
     },
     {
       name: 'Settings',
