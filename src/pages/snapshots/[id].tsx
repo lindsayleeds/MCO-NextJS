@@ -91,6 +91,7 @@ export default function SnapshotDetail() {
   ])
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isFetchingPrices, setIsFetchingPrices] = useState(false)
+  const [isFetchingDividends, setIsFetchingDividends] = useState(false)
   const [editForm, setEditForm] = useState({
     name: '',
     start_date: '',
@@ -254,6 +255,48 @@ export default function SnapshotDetail() {
     }
   }
 
+  const handleFetchDividends = async () => {
+    if (!snapshot) return
+
+    setIsFetchingDividends(true)
+    
+    try {
+      const response = await fetch(`http://localhost:4021/snapshots/${snapshot.id}/populate-dividends`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const result = await response.json()
+      console.log('Fetch dividends result:', result)
+
+      // Refresh positions data after fetching dividends
+      const { data, error } = await supabase
+        .from('snapshot_positions')
+        .select('*')
+        .eq('snapshot_id', snapshot.id)
+        .order('ticker', { ascending: true })
+
+      if (error) {
+        console.error('Error refreshing positions:', error)
+      } else {
+        setPositions(data || [])
+      }
+
+      alert('Dividends fetched successfully!')
+    } catch (error) {
+      console.error('Error fetching dividends:', error)
+      alert('Error fetching dividends. Please check if the FastAPI server is running on port 4021.')
+    } finally {
+      setIsFetchingDividends(false)
+    }
+  }
+
   // Calculate summary statistics
   const summaryStats = useMemo(() => {
     if (!positions || positions.length === 0) {
@@ -267,10 +310,25 @@ export default function SnapshotDetail() {
     }
 
     const totalPositions = positions.length
-    const winners = positions.filter(p => (p.return_pct_at_snapshot ?? 0) > 0).length
-    const losers = positions.filter(p => (p.return_pct_at_snapshot ?? 0) < 0).length
+    
+    // Calculate returns including dividends for each position
+    const positionsWithReturns = positions.map(p => {
+      const startPrice = p.start_price
+      const endPrice = p.end_price
+      const dividends = Number(p.dividends_paid) || 0
+      
+      if (!startPrice || !endPrice || startPrice === 0) {
+        return { ...p, calculatedReturn: 0 }
+      }
+      
+      const totalReturn = ((endPrice + dividends) - startPrice) / startPrice * 100
+      return { ...p, calculatedReturn: totalReturn }
+    })
+    
+    const winners = positionsWithReturns.filter(p => p.calculatedReturn > 0).length
+    const losers = positionsWithReturns.filter(p => p.calculatedReturn < 0).length
     const totalDividends = positions.reduce((sum, p) => sum + (Number(p.dividends_paid) || 0), 0)
-    const averageReturn = positions.reduce((sum, p) => sum + (p.return_pct_at_snapshot || 0), 0) / positions.length
+    const averageReturn = positionsWithReturns.reduce((sum, p) => sum + p.calculatedReturn, 0) / positions.length
 
     return {
       totalPositions,
@@ -351,16 +409,25 @@ export default function SnapshotDetail() {
         )
       }
     }),
-    columnHelper.accessor('return_pct_at_snapshot', {
+    columnHelper.display({
+      id: 'return_pct_with_dividends',
       header: 'Return %',
       cell: info => {
-        const value = info.getValue()
-        if (value === null) {
+        const row = info.row.original
+        const startPrice = row.start_price
+        const endPrice = row.end_price
+        const dividends = Number(row.dividends_paid) || 0
+        
+        if (!startPrice || !endPrice || startPrice === 0) {
           return <div className="text-muted-foreground">-</div>
         }
+        
+        // Calculate return including dividends: ((End Price + Dividends) - Start Price) / Start Price * 100
+        const totalReturn = ((endPrice + dividends) - startPrice) / startPrice * 100
+        
         return (
-          <div className={`font-medium ${value >= 0 ? 'text-profit-green-600' : 'text-loss-red-600'}`}>
-            {value >= 0 ? '+' : ''}{value.toFixed(2)}%
+          <div className={`font-medium ${totalReturn >= 0 ? 'text-profit-green-600' : 'text-loss-red-600'}`}>
+            {totalReturn >= 0 ? '+' : ''}{totalReturn.toFixed(2)}%
           </div>
         )
       }
@@ -488,6 +555,15 @@ export default function SnapshotDetail() {
                 >
                   <RefreshCw className={`h-4 w-4 ${isFetchingPrices ? 'animate-spin' : ''}`} />
                   {isFetchingPrices ? 'Fetching...' : 'Fetch Prices'}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={handleFetchDividends}
+                  disabled={isFetchingDividends}
+                  className="flex items-center gap-2"
+                >
+                  <DollarSign className={`h-4 w-4 ${isFetchingDividends ? 'animate-spin' : ''}`} />
+                  {isFetchingDividends ? 'Fetching...' : 'Fetch Dividends'}
                 </Button>
                 <Button 
                   variant="destructive" 
